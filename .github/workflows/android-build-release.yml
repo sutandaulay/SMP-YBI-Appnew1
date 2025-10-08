@@ -1,0 +1,65 @@
+name: Android Build & Release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Setup JDK
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: temurin
+
+      # 3. Grant execute permission untuk gradlew dan gradle-wrapper.jar
+      - name: Grant execute permissions
+        run: |
+          chmod +x gradlew
+          chmod +x gradle/wrapper/gradle-wrapper.jar
+
+      # 4. Build Debug APK
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      # 5. Upload Debug APK
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      # 6. Restore keystore dari secret
+      - name: Setup Keystore
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
+      # 7. Build Release APK dan sign otomatis
+      - name: Build Release APK
+        run: ./gradlew assembleRelease -Pandroid.injected.signing.store.file=release.keystore \
+                                      -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+                                      -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+                                      -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }} \
+                                      --no-daemon
+
+      # 8. Upload Release APK
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/app-release.apk
